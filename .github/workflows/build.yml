@@ -1,0 +1,122 @@
+name: Build Executables
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ created ]
+  workflow_dispatch: # Permite executar manualmente
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact_name: Procura.exe
+            build_path: dist/Procura.exe
+          - os: macos-latest
+            platform: macos
+            artifact_name: Procura.app
+            build_path: dist/Procura.app
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requiriments.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requiriments.txt
+        pip install pyinstaller
+
+    - name: Install tkinter (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk
+
+    - name: Clean previous builds
+      shell: bash
+      run: |
+        rm -rf dist build
+
+    - name: Build executable
+      run: |
+        pyinstaller procura.spec --clean --noconfirm
+
+    - name: Verify build (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        if (Test-Path "dist/Procura.exe") {
+          Write-Host "✅ Windows executable created successfully"
+          Get-ChildItem dist/Procura.exe | Format-List
+        } else {
+          Write-Error "❌ Windows executable not found"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: Verify build (macOS)
+      if: matrix.platform == 'macos'
+      run: |
+        if [ -d "dist/Procura.app" ]; then
+          echo "✅ macOS app created successfully"
+          ls -la dist/Procura.app
+        else
+          echo "❌ macOS app not found"
+          exit 1
+        fi
+
+    - name: Create zip archive (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        Compress-Archive -Path "dist/Procura.exe" -DestinationPath "Procura-windows.zip"
+      shell: pwsh
+
+    - name: Create zip archive (macOS)
+      if: matrix.platform == 'macos'
+      run: |
+        cd dist && zip -r ../Procura-macos.zip Procura.app
+
+    - name: Upload artifact (Windows)
+      if: matrix.platform == 'windows'
+      uses: actions/upload-artifact@v3
+      with:
+        name: procura-windows-${{ github.sha }}
+        path: Procura-windows.zip
+        retention-days: 30
+
+    - name: Upload artifact (macOS)
+      if: matrix.platform == 'macos'
+      uses: actions/upload-artifact@v3
+      with:
+        name: procura-macos-${{ github.sha }}
+        path: Procura-macos.zip
+        retention-days: 30
+
+    - name: Upload to release (if release)
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          Procura-*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

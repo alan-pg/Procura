@@ -1,0 +1,113 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Dispara quando uma tag v* é criada (ex: v1.0.0)
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get tag name
+      id: tag
+      run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.TAG_NAME }}
+        release_name: Procura ${{ steps.tag.outputs.TAG_NAME }}
+        body: |
+          ## 🚀 Nova versão do Procura!
+          
+          ### 📥 Downloads
+          - **Windows**: `Procura-windows.zip`
+          - **macOS**: `Procura-macos.zip`
+          
+          ### 📋 Como usar:
+          1. Baixe o arquivo para seu sistema operacional
+          2. Extraia o arquivo ZIP
+          3. Execute o programa:
+             - **Windows**: Execute `Procura.exe`
+             - **macOS**: Abra `Procura.app`
+          
+          ### 🆕 Novidades desta versão:
+          - [Adicione as novidades aqui]
+          
+          ### 🐛 Correções:
+          - [Adicione as correções aqui]
+          
+          ---
+          
+          **⚠️ Importante**: 
+          - Windows pode mostrar aviso de segurança - clique em "Mais informações" > "Executar assim mesmo"
+          - macOS pode mostrar aviso de desenvolvedor não identificado - vá em Preferências > Segurança e clique em "Permitir mesmo assim"
+        draft: false
+        prerelease: false
+
+  build-and-upload:
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact_name: Procura-windows.zip
+          - os: macos-latest  
+            platform: macos
+            artifact_name: Procura-macos.zip
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requiriments.txt
+        pip install pyinstaller
+
+    - name: Clean previous builds
+      shell: bash
+      run: rm -rf dist build
+
+    - name: Build executable
+      run: pyinstaller procura.spec --clean --noconfirm
+
+    - name: Create Windows zip
+      if: matrix.platform == 'windows'
+      run: |
+        Compress-Archive -Path "dist/Procura.exe" -DestinationPath "Procura-windows.zip"
+      shell: pwsh
+
+    - name: Create macOS zip  
+      if: matrix.platform == 'macos'
+      run: |
+        cd dist && zip -r ../Procura-macos.zip Procura.app
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ matrix.artifact_name }}
+        asset_name: ${{ matrix.artifact_name }}
+        asset_content_type: application/zip
