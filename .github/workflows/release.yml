@@ -22,12 +22,12 @@ jobs:
       
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ steps.tag.outputs.TAG_NAME }}
-        release_name: Procura ${{ steps.tag.outputs.TAG_NAME }}
+        name: Procura ${{ steps.tag.outputs.TAG_NAME }}
         body: |
           ## 🚀 Nova versão do Procura!
           
@@ -74,7 +74,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -89,6 +89,7 @@ jobs:
       run: rm -rf dist build
 
     - name: Build executable
+      shell: bash
       run: pyinstaller procura.spec --clean --noconfirm
 
     - name: Create Windows zip
@@ -103,11 +104,9 @@ jobs:
         cd dist && zip -r ../Procura-macos.zip Procura.app
 
     - name: Upload Release Asset
-      uses: actions/upload-release-asset@v1
+      uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: ${{ needs.create-release.outputs.upload_url }}
-        asset_path: ./${{ matrix.artifact_name }}
-        asset_name: ${{ matrix.artifact_name }}
-        asset_content_type: application/zip
+        tag_name: ${{ github.ref_name }}
+        files: ./${{ matrix.artifact_name }}
